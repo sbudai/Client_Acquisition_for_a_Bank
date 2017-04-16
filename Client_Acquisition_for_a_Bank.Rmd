@@ -1,0 +1,1697 @@
+---
+title: "Client Acquisition for a Bank"
+output:
+  html_notebook:
+    toc: yes
+---
+
+This project is about to mine new small business client leads to a Bank based on the features of already acquired small business clients.
+
+# Initial General Setup
+```{r setup, include=TRUE,warning=FALSE}
+knitr::opts_chunk$set(tidy=TRUE,options(warn=1),cache=TRUE)
+chooseCRANmirror(graphics=FALSE,ind=1)
+knitr::opts_knit$set(root.dir=getwd())
+
+# cleaning the workplace
+rm(list = ls())
+gc(reset = TRUE)
+unlink(paste(getwd(), '/Client_Acquisition_for_a_Bank.nb.html', sep = ''), recursive = TRUE)
+
+# setting general options
+Sys.getlocale()
+Sys.setlocale('LC_ALL','C') 
+options(StringAsFactor = FALSE)
+print(paste('You are in', getwd(), 'directory. The intermediate materials and results will be placed here.', sep = ' '))
+
+# creating necessary subfolders
+dir.create(file.path(getwd(), '_tmp'), showWarnings = FALSE)
+dir.create(file.path(getwd(), '_results'), showWarnings = FALSE)
+
+# calling 'install.load' library and installing if required
+# It contains a cool function for package installing/loading.
+if(!'install.load' %in% rownames(installed.packages())) {
+  install.packages('install.load')
+  Sys.sleep(6)
+}
+library(install.load)
+
+# calling all the other necessary libraries and installing if required
+install_load('formatR',
+             'rio', 
+             'data.table',
+             'sqldf', 
+             'stringi', 
+             'validate', 
+             'ggplot2',
+             'ggthemes',
+             'simputation', 
+             'knitr', 
+             'xml2', 
+             'reshape2',
+             'XML',
+             'pander',
+             'Imap',
+             'igraph',
+             'ggmap',
+             'randomForest',
+             'missForest',
+             'h2o',
+             'grid')
+Sys.sleep(3)
+
+keys <- data.table(import('~/Documents/creds.csv'))
+keys <- keys[ProjectTitle == 'Client_Acquisition_for_a_Bank', (2:3), with = FALSE]
+
+# creating function to display graphs on one page
+# http://www.cookbook-r.com/Graphs/Multiple_graphs_on_one_page_(ggplot2)/
+## Multiple plot function
+##
+## ggplot objects can be passed in ..., or to plotlist (as a list of ggplot objects)
+## - cols:   Number of columns in layout
+## - layout: A matrix specifying the layout. If present, 'cols' is ignored.
+##
+## If the layout is something like matrix(c(1,2,3,3), nrow=2, byrow=TRUE),
+## then plot 1 will go in the upper left, 2 will go in the upper right, and
+## 3 will go all the way across the bottom.
+####
+#multiplot <- function(..., plotlist = NULL, file, cols = 1, layout = NULL) {
+#  # Make a list from the ... arguments and plotlist
+#  plots <- c(list(...), plotlist)
+#  numPlots = length(plots)
+#  # If layout is NULL, then use 'cols' to determine layout
+#  if (is.null(layout)) {
+#    # Make the panel
+#    # ncol: Number of columns of plots
+#    # nrow: Number of rows needed, calculated from # of cols
+#    layout <- matrix(seq(1, cols * ceiling(numPlots/cols)),
+#                     ncol = cols, 
+#                     nrow = ceiling(numPlots/cols))
+#  }
+#  if (numPlots == 1) {
+#    print(plots[[1]])
+#    } else {
+#    # Set up the page
+#    grid.newpage()
+#    pushViewport(viewport(layout = grid.layout(nrow(layout), ncol(layout))))
+#    # Make each plot, in the correct location
+#    for (i in 1:numPlots) {
+#      # Get the i,j matrix positions of the regions that contain this subplot
+#      matchidx <- as.data.table(which(layout == i, arr.ind = TRUE))
+#      print(plots[[i]], vp = viewport(layout.pos.row = matchidx[, row],
+#                                      layout.pos.col = matchidx[, col]))
+#    }
+#  }
+#}
+```
+
+
+# Source Data Import
+
+importing all companies' list
+```{r, warning=FALSE, include=TRUE}
+
+file_in = paste('https://www.dropbox.com/s/', keys[AppName == 'felveteli_feladat_v2', 2], '?raw=1', sep = '')
+company_list <- fread(file_in, 
+                      sep = ';', 
+                      na.strings = c('na', 'n/a', 'NA', 'N/A', ''), 
+                      strip.white = TRUE, 
+                      integer64 = 'numeric',
+                      colClasses = list(character = 1, 5, 6, 7, 12, 14))
+
+# let's bring column names into a general name convention
+colnames(company_list) <- gsub(' ', '', stri_trans_totitle(gsub('_', ' ', stri_trans_general(colnames(company_list), 'Latin-ASCII'))))
+
+company_list[, ':=' (FotevekenysegText = stri_trans_general(FotevekenysegText , 'Latin-ASCII'),
+                     Szekhely = stri_trans_general(Szekhely, 'Latin-ASCII'),
+                     SzekhelyVaros = stri_trans_general(SzekhelyVaros, 'Latin-ASCII'))]
+
+# saving
+file_out = paste(getwd(), '/_tmp/company_list.RData', sep = '')
+export(company_list, file_out)
+
+# let's check a sample of the data
+pander(company_list[sample(.N, 5)], split.table = 200)
+```
+
+importing owner companies' list
+```{r, warning=FALSE, include=TRUE}
+
+file_in = paste('https://www.dropbox.com/s/', keys[AppName == 'felveteli_feladat_tulajok_listaja', 2], '?raw=1', sep = '')
+owner_company_list <- fread(file_in, 
+                            sep = ';', 
+                            na.strings = c('na', 'n/a', 'NA', 'N/A', ''), 
+                            strip.white = TRUE, 
+                            colClasses = list(character = 1, 2))
+
+# let's bring column names into a general name convention
+colnames(owner_company_list) <- gsub(' ', '', stri_trans_totitle(gsub('_', ' ', stri_trans_general(colnames(owner_company_list), 'Latin-ASCII'))))
+
+# saving
+file_out = paste(getwd(), '/_tmp/owner_company_list.RData', sep = '')
+export(owner_company_list, file_out)
+
+# let's check a sample of the data
+pander(owner_company_list[sample(.N, 5)], split.table = 200)
+```
+
+importing postcode list of bank branches
+```{r, warning=FALSE, include=TRUE}
+
+file_in = paste('https://www.dropbox.com/s/', keys[AppName == 'irszamlista', 2], '?raw=1', sep = '')
+branch_zip_list <- fread(file_in,
+                         sep = ';', 
+                         na.strings = c('na', 'n/a', 'NA', 'N/A', ''), 
+                         strip.white = TRUE,
+                         colClasses = list(character = 1))
+setnames(branch_zip_list, 'irányítószám', 'IrSzam')
+
+# saving
+file_out = paste(getwd(), '/_tmp/branch_zip_list.RData', sep = '')
+export(branch_zip_list, file_out)
+
+# let's check a sample of the data
+pander(branch_zip_list[sample(.N, 5)], split.table = 200)
+```
+
+# Data Exploration & Cleaning 
+
+initial summary of company list
+```{r, warning=FALSE, include=TRUE}
+
+# let's check a sample of the data
+pander(summary(company_list), split.table = 200)
+```
+
+
+let's check column values validity
+```{r, warning=FALSE, include=TRUE}
+
+# prerequisite of detection of Adoszam values being unique is to order them by that column
+company_list <- company_list[order(Adoszam)]
+
+ct <- check_that(company_list, 
+                 valid_notation_BankiUgyfel = BankiUgyfel == 0
+                                            | BankiUgyfel == 1,
+                 distinct_Adoszam = rle(sort(Adoszam))[[1]] == 1,
+                 complete_Adoszam = stri_length(Adoszam) == 8,
+                 complete_AdoszamHosszu = stri_length(AdoszamHosszu) == 13,
+                 identical_Adoszam_and_AdoszamHosszu = Adoszam == substr(AdoszamHosszu,1 , 8),
+                 initcap_Cegforma = Cegforma == stri_trans_totitle(Cegforma),
+                 valid_AktivTulajdonosSzam = AktivTulajdonosSzam >= 1,
+                 valid_AktivPrivatTulajdonos = AktivTulajdonosSzam >= AktivPrivatTulajdonos,
+                 filled_AktivTulajdonosSzam_and_AktivPrivatTulajdonos = stri_length(AktivTulajdonosSzam) >= 1
+                                                                      & stri_length(AktivPrivatTulajdonos) >= 1,
+                 not_negative_Cegkora = Cegkora >= 0,
+                 under_UCL_Cegkora = Cegkora <= mean(Cegkora, na.rm = TRUE) + 3 * sd(Cegkora, na.rm = TRUE),
+                 valid_Letszam = Letszam >= 1,
+                 filled_FotevekenysegText = stri_length(FotevekenysegText) >= 1,
+                 initcap_FotevekenysegText = FotevekenysegText == stri_trans_totitle(FotevekenysegText),
+                 valid_postcode = nchar(sub(' .*', '', stri_trim(Szekhely))) == 4,
+                 valid_SzekhelyVaros = stri_length(SzekhelyVaros) >= 2
+                                     & grepl('\\d', SzekhelyVaros) == FALSE,
+                 initcap_SzekhelyVaros = SzekhelyVaros == stri_trans_totitle(SzekhelyVaros), 
+                 valid_Szekhely = stri_length(Szekhely) >= 11
+                                & grepl('\\D', substr(stri_trim(Szekhely), 1, 4)) == FALSE
+                                & grepl('\\^', Szekhely) == FALSE,
+                 initcap_Szekhely = Szekhely == stri_trans_totitle(Szekhely), 
+                 filled_Arbevetel = stri_length(Arbevetel) >= 1,
+                 filled_MerlegEredmeny = stri_length(MerlegEredmeny) >= 1,
+                 filled_SajatToke = stri_length(SajatToke) >= 1,
+                 filled_FotevekenysegText_and_AktivTulajdonosSzam_and_Cegforma = stri_length(FotevekenysegText) >= 1
+                                                                               & stri_length(AktivTulajdonosSzam) >= 1
+                                                                               & stri_length(Cegforma) >= 1
+                 )
+dt <- data.table(summary(ct))
+dt <- dt[, c(1:5, 8)]
+
+# let's see the validity of the data
+pander(dt, split.table = 200)
+```
+
+
+Adoszam is not distinct in the table, so I drop the repeating lines and double check it
+```{r, warning=FALSE, include=TRUE}
+
+company_list <- data.table(unique(company_list))
+
+# prerequisite of detection of Adoszam values being unique is to order them by that column
+company_list <- company_list[order(Adoszam)]
+ct <- check_that(company_list,
+                 distinct_Adoszam = rle(sort(Adoszam))[[1]] == 1)
+dt <- data.table(summary(ct))
+dt <- dt[, c(1:5, 8)]
+
+# let's see the validity of the data
+pander(dt, split.table = 200)
+```
+It seems ok. We got rid of duplicates.
+
+
+let's drop commas from Szekhely and SzekhelyVaros columns
+```{r, warning=FALSE, include=TRUE}
+
+# let's check a sample of the data
+pander(company_list[grepl(',', Szekhely) | grepl(',', SzekhelyVaros), .(Adoszam, Szekhely,  SzekhelyVaros)])
+company_list[grepl(',', Szekhely), Szekhely := gsub(',', '', Szekhely)]
+company_list[grepl(',', SzekhelyVaros), SzekhelyVaros := gsub(',', '', SzekhelyVaros)]
+```
+
+let's transform text columns to initial capitals
+```{r, warning=FALSE, include=TRUE}
+
+company_list[Cegforma != stri_trans_totitle(Cegforma), Cegforma := stri_trans_totitle(Cegforma)]
+company_list[FotevekenysegText != stri_trans_totitle(FotevekenysegText), FotevekenysegText := stri_trans_totitle(FotevekenysegText)]
+company_list[SzekhelyVaros != stri_trans_totitle(SzekhelyVaros), SzekhelyVaros := stri_trans_totitle(SzekhelyVaros)]
+company_list[Szekhely != stri_trans_totitle(Szekhely), Szekhely := stri_trans_totitle(Szekhely)]
+```
+
+let's transform the dependent variable (BankiUgyfel) into a real dummy variable
+```{r, warning=FALSE, include=TRUE}
+
+company_list[BankiUgyfel == 1, BankiUgyfel_ := TRUE]
+company_list[is.na(BankiUgyfel), BankiUgyfel_ := FALSE]
+company_list[, BankiUgyfel := NULL]
+setnames(company_list, 'BankiUgyfel_', 'BankiUgyfel')
+
+# let's check a sample of the data
+pander(company_list[, .N, by = BankiUgyfel], split.table = 200)
+```
+
+there are some companies with not matching Adoszam and AdoszamHosszu / I drop those AdoszamHosszu data
+```{r, warning=FALSE, include=TRUE}
+
+n <- company_list[Adoszam != substr(AdoszamHosszu,1 , 8), .N]
+pander(paste('The number of not matching AdoszamHosszu data: ', n, sep = ''))
+
+# let's check a sample of the data
+pander(company_list[Adoszam != substr(AdoszamHosszu,1 , 8), .(Adoszam, AdoszamHosszu, Szekhely)][sample(.N, 5)], split.table = 200)
+
+# dropping not matching AdoszamHosszu values
+company_list[Adoszam != substr(AdoszamHosszu,1 , 8), AdoszamHosszu := NA]
+```
+
+there are some companies with not complete AdoszamHosszu / I drop those AdoszamHosszu values
+```{r, warning=FALSE, include=TRUE}
+
+n <- company_list[stri_length(AdoszamHosszu) < 13, .N]
+pander(paste('The number of not complete AdoszamHosszu data: ', n, sep = ''))
+
+# let's check a sample of the data
+pander(company_list[stri_length(AdoszamHosszu) < 13, .(Adoszam, AdoszamHosszu, Szekhely)][sample(.N, 5)], split.table = 200)
+
+# dropping nonsense AdoszamHosszu values
+company_list[stri_length(AdoszamHosszu) < 13, AdoszamHosszu := NA]
+```
+
+there are some probable outliers in terms of CegKora / I have double checked, there could be companies with this age out there
+```{r, warning=FALSE, include=TRUE}
+
+dt <- company_list[Cegkora > mean(Cegkora, na.rm = TRUE) + 3 * sd(Cegkora, na.rm = TRUE), .N, by = Cegkora]
+dt[order(-Cegkora)]
+```
+
+there are some FotevekenysegText values are missing / I will fill them up with as NemIsmert
+& collapse value strings
+```{r, warning=FALSE, include=TRUE}
+
+n <- company_list[is.na(FotevekenysegText), .N]
+pander(paste('The number of missing FotevekenysegText values: ', n, sep = ''))
+
+company_list[is.na(FotevekenysegText), FotevekenysegText := 'NemIsmert']
+company_list[grepl(',', FotevekenysegText), FotevekenysegText := gsub(',', '', FotevekenysegText)]
+company_list[grepl(' ', FotevekenysegText), FotevekenysegText := gsub(' ', '', FotevekenysegText)]
+dt <- data.table(company_list[, .N, by = FotevekenysegText])
+
+# let's check a sample of the data
+pander(dt[order(-N, FotevekenysegText)], split.table = 200)
+```
+
+there are some not valid Szekhely values / I drop those Szekhely values
+```{r, warning=FALSE, include=TRUE}
+
+n <- company_list[stri_length(Szekhely) < 11
+                            | grepl('\\D', substr(stri_trim(Szekhely), 1, 4))
+                            | grepl('\\^', Szekhely),
+                            .N]
+pander(paste('The number of not valid Szekhely values: ', n, sep = ''))
+
+# let's check a sample of the data
+pander(company_list[stri_length(Szekhely) < 11
+                  | grepl('\\D', substr(stri_trim(Szekhely), 1, 4))
+                  | grepl('\\^', Szekhely)
+                  , .(Adoszam, Szekhely, SzekhelyVaros)], split.table = 200)
+
+# dropping nonsense Szekhely values
+company_list[stri_length(Szekhely) < 11
+            | grepl('\\D', substr(stri_trim(Szekhely), 1, 4))
+            | grepl('\\^', Szekhely)             
+            , Szekhely := NA]
+```
+
+there are some not valid SzekhelyVaros values / I drop those SzekhelyVaros values
+```{r, warning=FALSE, include=TRUE}
+
+n <- company_list[stri_length(stri_enc_toutf8(SzekhelyVaros, validate = TRUE)) < 2
+                            | grepl('\\d', stri_enc_toutf8(SzekhelyVaros, validate = TRUE)), .N]
+pander(paste('The number of not valid SzekhelyVaros values: ', n, sep = ''))
+
+# let's check a sample of the data
+pander(company_list[stri_length(stri_enc_toutf8(SzekhelyVaros, validate = TRUE)) < 2
+                   | grepl('\\d', stri_enc_toutf8(SzekhelyVaros, validate = TRUE)) 
+                   , .(Adoszam, Szekhely, stri_enc_toutf8(SzekhelyVaros, validate = TRUE))], split.table = 200)
+
+# dropping nonsense SzekhelyVaros values
+company_list[stri_length(stri_enc_toutf8(SzekhelyVaros, validate = TRUE)) < 2
+           | grepl('\\d', stri_enc_toutf8(SzekhelyVaros, validate = TRUE)) 
+           , SzekhelyVaros := NA]
+```
+
+saving modified company_list in RData format
+```{r, warning=FALSE, include=TRUE}
+
+# saving
+file_out = paste(getwd(), '/_tmp/company_list.RData', sep = '')
+export(company_list, file_out)
+
+# let's check a sample of the data
+pander(company_list[sample(.N, 5)], split.table = 200)
+```
+
+
+Let's take a look at histograms of columns (variables) of company list
+```{r, include=TRUE, message=FALSE, warning=FALSE}
+
+p1 <- ggplot(company_list) + 
+        geom_histogram(aes(x = SajatToke),
+                       fill = 'blue', 
+                       position = 'identity',
+                       binwidth = 0.3,
+                       alpha = I(0.7)) + 
+        ggtitle('Histogram for log10_SajatToke') +
+        facet_grid(BankiUgyfel ~ ., scales = 'free', labeller = labeller(BankiUgyfel = c('TRUE' = 'Banki Ugyfel', 
+                                                                                         'FALSE' = 'Not Banki Ugyfel'))) +
+        xlab('log10_SajatToke') +
+        scale_x_log10() +
+        theme_igray()
+Sys.sleep(2)  
+
+p2 <- ggplot(company_list) + 
+        geom_histogram(aes(x = MerlegEredmeny),
+                       fill = 'green', 
+                       position = 'identity',
+                       binwidth = 0.3,
+                       alpha = I(0.7)) + 
+        ggtitle('Histogram for log10_MerlegEredmeny') +
+        facet_grid(BankiUgyfel ~ ., scales = 'free', labeller = labeller(BankiUgyfel = c('TRUE' = 'Banki Ugyfel', 
+                                                                                         'FALSE' = 'Not Banki Ugyfel'))) +
+        xlab('log10_MerlegEredmeny') +
+        scale_x_log10() +
+        theme_igray()
+Sys.sleep(2)  
+
+p3 <- ggplot(company_list) + 
+        geom_histogram(aes(x = Arbevetel),
+                       fill = 'orange', 
+                       position = 'identity',
+                       binwidth = 0.3,
+                       alpha = I(0.7)) + 
+        ggtitle('Histogram for log10_Arbevetel') +
+        facet_grid(BankiUgyfel ~ ., scales = 'free', labeller = labeller(BankiUgyfel = c('TRUE' = 'Banki Ugyfel', 
+                                                                                         'FALSE' = 'Not Banki Ugyfel'))) +
+        xlab('log10_Arbevetel') +
+        scale_x_log10() +
+        theme_igray()
+Sys.sleep(2)
+
+p4 <- ggplot(company_list) + 
+        geom_histogram(aes(x = AktivPrivatTulajdonos),
+                       fill = 'red', 
+                       position = 'identity',
+                       binwidth = 0.1,
+                       alpha = I(0.7)) + 
+        ggtitle('Histogram for log10_AktivPrivatTulajdonos') +
+        facet_grid(BankiUgyfel ~ ., scales = 'free', labeller = labeller(BankiUgyfel = c('TRUE' = 'Banki Ugyfel', 
+                                                                                         'FALSE' = 'Not Banki Ugyfel'))) +
+        xlab('log10_AktivPrivatTulajdonos') +
+        scale_x_log10() +
+        theme_igray()
+Sys.sleep(2)
+
+p5 <- ggplot(company_list) + 
+        geom_histogram(aes(x = AktivTulajdonosSzam),
+                       fill = 'lightgreen', 
+                       position = 'identity',
+                       binwidth = 0.1,
+                       alpha = I(0.7)) + 
+        ggtitle('Histogram for log10_AktivTulajdonosSzam') +
+        facet_grid(BankiUgyfel ~ ., scales = 'free', labeller = labeller(BankiUgyfel = c('TRUE' = 'Banki Ugyfel', 
+                                                                                         'FALSE' = 'Not Banki Ugyfel'))) +
+        xlab('log10_AktivTulajdonosSzam') +
+        scale_x_log10() +
+        theme_igray()
+Sys.sleep(2)
+
+p6 <- ggplot(company_list) + 
+        geom_histogram(aes(x = Cegkora),
+                       fill = 'brown',
+                       position = 'identity',
+                       binwidth = 0.2,
+                       alpha = I(0.7)) +
+        ggtitle('Histogram for log10_Cegkora') +
+        facet_grid(BankiUgyfel ~ ., scales = 'free', labeller = labeller(BankiUgyfel = c('TRUE' = 'Banki Ugyfel', 
+                                                                                         'FALSE' = 'Not Banki Ugyfel'))) +
+        xlab('log10_Cegkora') +
+        scale_x_log10() +
+        theme_igray()
+Sys.sleep(2)
+
+p7 <- ggplot(company_list) + 
+        geom_histogram(aes(x = Letszam),
+                       fill = 'orange',
+                       position = 'identity',
+                       binwidth = 0.3,
+                       alpha = I(0.7)) +
+        ggtitle('Histogram for log10_Letszam') +
+        facet_grid(BankiUgyfel ~ ., scales = 'free', labeller = labeller(BankiUgyfel = c('TRUE' = 'Banki Ugyfel', 
+                                                                                         'FALSE' = 'Not Banki Ugyfel'))) +
+        xlab('log10_Letszam') +
+        scale_x_log10() +
+        theme_igray()
+Sys.sleep(2)
+
+p8 <- ggplot(company_list) +
+        geom_bar(aes(x = as.factor(Cegforma)),
+                 fill = 'blue',
+                 position = 'identity',
+                 alpha = I(0.7)) +
+        facet_grid(BankiUgyfel ~ ., scales = 'free', labeller = labeller(BankiUgyfel = c('TRUE' = 'Banki Ugyfel', 
+                                                                                         'FALSE' = 'Not Banki Ugyfel'))) +
+        ggtitle('Breakdown of Cegforma') +
+        xlab('Cegforma') +
+        theme_igray()
+Sys.sleep(2)
+
+p9 <- ggplot(company_list) +
+        geom_bar(aes(x = as.factor(FotevekenysegText)),
+                 fill = 'darkgreen',
+                 position = 'identity',
+                 alpha = I(0.7)) +
+        facet_grid(BankiUgyfel ~ ., scales = 'free', labeller = labeller(BankiUgyfel = c('TRUE' = 'Banki Ugyfel', 
+                                                                                         'FALSE' = 'Not Banki Ugyfel'))) +
+        ggtitle('Breakdown of FotevekenysegText') +
+        xlab('FotevekenysegText') +
+        theme_igray()
+Sys.sleep(2)
+
+p10 <- ggplot(company_list) +
+        geom_bar(aes(x = as.factor(BankiUgyfel)),
+                 fill = 'lightblue',
+                 position = 'identity',
+                 alpha = I(0.7)) +
+        ggtitle('Breakdown of BankiUgyfel') +
+        xlab('BankiUgyfel') +
+        theme_igray()
+Sys.sleep(2)
+
+# without plotly in one grid:
+# multiplot(p1, p2, p3, p4, p5, p6, p7, p8, p9, p10, cols = 2)
+
+library(plotly)
+library(htmlwidgets)
+Sys.sleep(2)
+
+# transforming into interactive graph
+pp1 <- ggplotly(p1)
+Sys.sleep(2)
+# saving
+file_out = paste(getwd(), '/pp1.html', sep = '')
+htmlwidgets::saveWidget(as.widget(pp1), file_out)
+
+# transforming into interactive graph
+pp2 <- ggplotly(p2)
+Sys.sleep(2)
+# saving
+file_out = paste(getwd(), '/pp2.html', sep = '')
+htmlwidgets::saveWidget(as.widget(pp2), file_out)
+
+# transforming into interactive graph
+pp3 <- ggplotly(p3)
+Sys.sleep(2)
+# saving
+file_out = paste(getwd(), '/pp3.html', sep = '')
+htmlwidgets::saveWidget(as.widget(pp3), file_out)
+
+# transforming into interactive graph
+pp4 <- ggplotly(p4)
+Sys.sleep(2)
+# saving
+file_out = paste(getwd(), '/pp4.html', sep = '')
+htmlwidgets::saveWidget(as.widget(pp4), file_out)
+
+# transforming into interactive graph
+pp5 <- ggplotly(p5)
+Sys.sleep(2)
+# saving
+file_out = paste(getwd(), '/pp5.html', sep = '')
+htmlwidgets::saveWidget(as.widget(pp5), file_out)
+
+# transforming into interactive graph
+pp6 <- ggplotly(p6)
+Sys.sleep(2)
+# saving
+file_out = paste(getwd(), '/pp6.html', sep = '')
+htmlwidgets::saveWidget(as.widget(pp6), file_out)
+
+# transforming into interactive graph
+pp7 <- ggplotly(p7)
+Sys.sleep(2)
+# saving
+file_out = paste(getwd(), '/pp7.html', sep = '')
+htmlwidgets::saveWidget(as.widget(pp7), file_out)
+
+# transforming into interactive graph
+pp8 <- ggplotly(p8)
+Sys.sleep(2)
+# saving
+file_out = paste(getwd(), '/pp8.html', sep = '')
+htmlwidgets::saveWidget(as.widget(pp8), file_out)
+
+# transforming into interactive graph
+pp9 <- ggplotly(p9)
+Sys.sleep(2)
+# saving
+file_out = paste(getwd(), '/pp9.html', sep = '')
+htmlwidgets::saveWidget(as.widget(pp9), file_out)
+
+# transforming into interactive graph
+pp10 <- ggplotly(p10)
+Sys.sleep(2)
+# saving
+file_out = paste(getwd(), '/pp10.html', sep = '')
+htmlwidgets::saveWidget(as.widget(pp10), file_out)
+
+# moving those file into tmp folder
+filez <- list.files(getwd(), pattern = '^pp\\d+\\.html$')
+sapply(filez, FUN = function(eachPath) {
+  file.rename(from = eachPath,
+              to = sub(pattern = 'pp',
+                       replacement = './_tmp/pp',
+                       eachPath))
+  })
+
+layout(pp1, dragmode = 'pan')
+Sys.sleep(2)
+layout(pp2, dragmode = 'pan')
+Sys.sleep(2)
+layout(pp3, dragmode = 'pan')
+Sys.sleep(2)
+layout(pp4, dragmode = 'pan')
+Sys.sleep(2)
+layout(pp5, dragmode = 'pan')
+Sys.sleep(2)
+layout(pp6, dragmode = 'pan')
+Sys.sleep(2)
+layout(pp7, dragmode = 'pan')
+Sys.sleep(2)
+layout(pp8, dragmode = 'pan')
+Sys.sleep(2)
+layout(pp9, dragmode = 'pan')
+Sys.sleep(2)
+layout(pp10, dragmode = 'pan')
+Sys.sleep(2)
+
+# dropping plotly package and relaunch rio package
+detach(package:plotly, unload = TRUE)
+detach(package:htmlwidgets, unload = TRUE)
+library(rio)
+
+# deallocating memory!
+rm(company_list, p1, p2, p3, p4, p5, p6, p7, p8, p9, p10)
+```
+
+# Preparation steps before Enrichment
+
+downloading postcode list of all Hungarian settlements
+```{r, warning=FALSE, include=TRUE}
+
+# downloading & decompressing into a corresponding folder
+temp <- tempfile()
+download.file('http://download.geonames.org/export/zip/HU.zip', temp)
+unzip(zipfile = temp, exdir = paste(getwd(), '/_tmp/', sep = ''))
+file.rename(paste(getwd(), '/_tmp/HU.txt', sep = ''), paste(getwd(), '/_tmp/postcode_list.csv', sep = ''))
+file.rename(paste(getwd(), '/_tmp/readme.txt', sep = ''), paste(getwd(), '/_tmp/postcode_list_readme.txt', sep = ''))
+
+# importing into R environment
+postcode_list <- data.table(import(paste(getwd(), '/_tmp/postcode_list.csv', sep = '')))
+postcode_list[, ':=' (IrSzam = as.character(V2), Megye = as.character(V4), Varos = as.character(V3), Lat = V10, Lon = V11)]
+postcode_list <- unique(postcode_list[, c(13:17)])
+
+# changing accented characters into non-accented ones in the downloaded data
+postcode_list[, ':=' (Megye = stri_trans_general(Megye, 'Latin-ASCII'), Varos = stri_trans_general(Varos, 'Latin-ASCII'))]
+
+# let's put together those cities which shares the same postcode and average out geocodes on postcode level
+# postcodes shared among at least 2 cities will only have one (averaged) geocode
+# so different settlements will have the same geocodes
+postcode_list <- data.table(sqldf('SELECT  IrSzam
+                                          ,GROUP_CONCAT(DISTINCT Megye) AS Megye 
+                                          ,GROUP_CONCAT(DISTINCT Varos) AS Varos
+                                          ,AVG(Lat) AS Lat
+                                          ,AVG(Lon) AS Lon
+                                    FROM  postcode_list
+                                    GROUP BY IrSzam'))
+
+## Let's check with eyeballing whether we have all of the cities or not (it seems, we have)
+dt <- copy(data.table(postcode_list[, .N, by = .(Lat, Lon, Megye)]))
+Hungary <- get_map(location = c(16, 45.7, 23, 48.6), 
+                    zoom = 8, 
+                    source = 'stamen', 
+                    maptype = 'toner-lite', 
+                    messaging = TRUE, 
+                    language = 'hu-HU',
+                    filename = paste(getwd(), '/_tmp/HungaryTemp', sep = ''))
+
+# saving
+file_out = paste(getwd(), '/_tmp/Hungary.rda', sep = '')
+save(Hungary, file = file_out)
+
+  ggmap(Hungary) +
+  geom_point(data = dt,
+             aes(x = Lon,
+                 y = Lat,
+                 color = Megye,
+                 size = N),
+             alpha = 0.7,
+             stroke = 1.2,
+             shape = 1) +
+  ggtitle('Number of Postcodes per Cities on Hungary')
+
+# let's check a sample of the data
+pander(postcode_list[sample(.N, 5)], split.table = 200)
+
+# deallocating memory!
+rm(temp)
+```
+
+downloading those companies list which employed people without registration
+```{r, warning=FALSE, include=TRUE}
+
+# this link is changing weekly / you can check the valid one on http://nav.gov.hu/nav/adatbazisok/benemjelentett
+unreg_emp <- data.table(import('http://nav.gov.hu/data/cms328145/Be_nem_jelentett_alkalmazottat_foglalkoztatok_20170329.xlsx'))
+
+# changing accented characters into non-accented ones in the downloaded data
+colnames(unreg_emp) <- gsub('(', '_', gsub(')', '', gsub(' ', '', stri_trans_totitle(gsub('_', ' ', stri_trans_general(colnames(unreg_emp), 'Latin-ASCII'))))), fixed = TRUE)
+unreg_emp[, ':=' (AdozoNeve = stri_trans_general(AdozoNeve, 'Latin-ASCII'), Szekhely_Lakcim = stri_trans_general(Szekhely_Lakcim, 'Latin-ASCII'))]
+
+# saving
+file_out = paste(getwd(), '/_tmp/unreg_emp.RData', sep = '')
+export(unreg_emp, file_out)
+
+# let's check a sample of the data
+pander(unreg_emp[sample(.N, 5)], split.table = 200)
+```
+
+
+extract the necessary data out of unreg_emp
+```{r, warning=FALSE, include=TRUE}
+
+unreg_emp <- unreg_emp[, names(unreg_emp)[4], with = FALSE]
+unreg_emp[, unreg_emp := TRUE]
+unreg_emp[, Adoszam := substr(stri_trim(Adoszam_AdoazonositoJel), 1, 8)]
+unreg_emp[, Adoszam_AdoazonositoJel := NULL]
+unreg_emp <- unique(unreg_emp)
+
+# saving
+file_out = paste(getwd(), '/_tmp/unreg_emp.RData', sep = '')
+export(unreg_emp, file_out)
+
+# let's check a sample of the data
+pander(unreg_emp[sample(.N, 5)], split.table = 200)
+```
+
+# Enriching Data from internal and external sources
+
+creating a new, modified instance of company list 
+```{r, warning=FALSE, include=TRUE}
+
+# importing
+file_in = paste(getwd(), '/_tmp/company_list.RData', sep = '')
+company_list_1 <- data.table(import(file_in))
+
+# creating new columns
+company_list_1[nchar(sub(' .*', '', stri_trim(Szekhely))) == 4, IrSzam := substr(sub(' .*', '', stri_trim(Szekhely)), 1, 4)]
+company_list_1[Adoszam == substr(AdoszamHosszu,1 , 8) & nchar(AdoszamHosszu) == 13, AFAKod := substr(AdoszamHosszu, 10, 10)]
+company_list_1[Adoszam == substr(AdoszamHosszu,1 , 8) & nchar(AdoszamHosszu) == 13, NAVTeruletKod := substr(AdoszamHosszu, 12, 13)]
+company_list_1[, AdoszamHosszu := NULL]
+
+# let's check a sample of the data
+pander(company_list_1[sample(.N, 5)], split.table = 200)
+```
+
+let's denote those companies which used unregistered employees
+```{r, warning=FALSE, include=TRUE}
+
+# right join
+setkey(unreg_emp, Adoszam)
+setkey(company_list_1, Adoszam)
+company_list_1 <- unreg_emp[company_list_1]
+
+# replacing NA with FALSE in unreg_emp column
+company_list_1[is.na(unreg_emp), unreg_emp := FALSE]
+
+# let's check a sample of the data
+pander(company_list_1[unreg_emp, ][sample(.N, 5)], split.table = 200)
+```
+
+joining latitude and longitude data of postcodes to company list
+```{r, warning=FALSE, include=TRUE}
+
+# right join
+setkey(postcode_list, IrSzam)
+setkey(company_list_1, IrSzam)
+company_list_1 <- postcode_list[company_list_1]
+
+i <- company_list_1[is.na(Lat), .N]
+j <- company_list_1[, .N]
+pander(paste('There are', i, 'clients out of', j, 'without geocode proxy', sep = ' '), split.table = 200)
+
+# Let's check with eyeballing in which postcode area are the current clients' hq
+dt <- copy(data.table(company_list_1[!is.na(Lat), .N, by = .(BankiUgyfel, Lat, Lon)]))
+ggmap(Hungary) +
+  geom_point(data = dt,
+             aes(x = Lon,
+                 y = Lat,
+                 color = BankiUgyfel,
+                 size = N),
+             alpha = 0.7,
+             stroke = 1.2,
+             shape = 1) +
+  ggtitle('Number of Companies per Postcode Areas on Hungary')
+
+# let's check a sample of the data
+pander(company_list_1[!is.na(Lat), ][sample(.N, 5)], split.table = 200)
+```
+
+joining latitude and longitude data of postcodes to branch postcode list
+```{r, warning=FALSE, include=TRUE}
+
+# right join
+setkey(branch_zip_list, IrSzam)
+setkey(postcode_list, IrSzam)
+branch_postcode_list <- postcode_list[branch_zip_list]
+
+# saving
+file_out = paste(getwd(), '/_tmp/branch_postcode_list.RData', sep = '')
+export(branch_postcode_list, file_out)
+
+# Let's check with eyeballing in which postcode area are the branches on the bank
+ggmap(Hungary) +
+  geom_point(data = branch_postcode_list,
+             aes(x = Lon,
+                 y = Lat),
+             size = 1,
+             color = 'green',
+             alpha = 0.7,
+             stroke = 1.2,
+             shape = 1) +
+  ggtitle('Bank Branches All Over Hungary')
+
+# let's check a sample of the data
+pander(branch_postcode_list[sample(.N, 5)], split.table = 200)
+
+# deallocating memory!
+rm(Hungary)
+```
+
+calculating distance proxy between firms address and a the nearest branch of bank
+```{r, warning=FALSE, include=TRUE}
+
+postcode_geocode_list <- copy(data.table(unique(company_list_1[!is.na(Lat), .(IrSzam, Lat, Lon)])))
+setkey(postcode_geocode_list, IrSzam)
+
+dist_matrix <- copy(data.table(postcode_geocode_list[, IrSzam]))
+colnames(dist_matrix) <- 'IrSzam'
+dist_matrix[, LegkozFiokTavProxy := 10000000]
+
+for (i in 1:nrow(postcode_geocode_list)) {
+  for (j in 1:nrow(branch_postcode_list)) {
+    dist_matrix[i, branch_postcode_list[j, IrSzam]] <- gdist(lon.1 = postcode_geocode_list[i, Lon],
+                                                             lat.1 = postcode_geocode_list[i, Lat],
+                                                             lon.2 = branch_postcode_list[j, Lon],
+                                                             lat.2 = branch_postcode_list[j, Lat],
+                                                             units = 'km')
+  }
+  dist_matrix[i, LegkozFiokTavProxy := min(as.numeric(dist_matrix[i, 3:(ncol(dist_matrix)), with = FALSE]), na.rm = TRUE)]
+}
+
+# saving
+file_out = paste(getwd(), '/_tmp/dist_matrix.RData', sep = '')
+export(dist_matrix, file_out)
+
+# let's check a sample of the distance matrix data
+pander(dist_matrix[sample(.N, 5)], split.table = 200)
+
+# let's enriching the company list data with nearest branch distance proxy
+dt <- copy(data.table(dist_matrix[, 1:2]))
+setkey(dt, IrSzam)
+setkey(company_list_1, IrSzam)
+company_list_1 <- dt[company_list_1]
+
+# saving
+file_out = paste(getwd(), '/_tmp/company_list_1.RData', sep = '')
+export(company_list_1, file_out)
+
+# let's check a sample of the data
+pander(company_list_1[sample(.N, 5)], split.table = 200)
+
+# deallocating memory
+rm(dist_matrix)
+```
+
+
+let' s denote whether parent companies are clients also or not
+```{r, warning=FALSE, include=TRUE}
+
+dt <- company_list_1[BankiUgyfel == TRUE & nchar(Adoszam) == 8, .(BankiUgyfel, Adoszam)]
+setnames(dt, 'Adoszam', 'AdoszamTulaj')
+setnames(dt, 'BankiUgyfel', 'TulajCegesBankiUgyfel')
+
+owner_company_list_1 <- copy(data.table(owner_company_list))
+
+# right join
+setkey(dt, AdoszamTulaj)
+setkey(owner_company_list_1, AdoszamTulaj)
+owner_company_list_1 <- dt[owner_company_list_1]
+owner_company_list_1[is.na(TulajCegesBankiUgyfel), TulajCegesBankiUgyfel := FALSE]
+
+# saving
+file_out = paste(getwd(), '/_tmp/owner_company_list_1.RData', sep = '')
+export(owner_company_list_1, file_out)
+
+# let's check the data
+pander(owner_company_list_1[, .N, by = (TulajCegesBankiUgyfel)], split.table = 200)
+
+# let's count the number of those owner companies which are customers of the Bank by affiliate companies
+dt <- copy(data.table(owner_company_list_1[TulajCegesBankiUgyfel == TRUE, ]))
+dt <- data.table(sqldf('SELECT Adoszam
+                              ,COUNT(DISTINCT TulajCegesBankiUgyfel) AS TulajCegesBankiUgyfelNr
+                        FROM  dt
+                        GROUP BY Adoszam'))
+
+# let's check a sample of the data
+pander(dt[sample(.N, 5)], split.table = 200)
+
+# let's join the company list with the modified owner company list
+setkey(dt, Adoszam)
+setkey(company_list_1, Adoszam)
+company_list_1 <- dt[company_list_1]
+company_list_1[is.na(TulajCegesBankiUgyfelNr), TulajCegesBankiUgyfelNr := 0]
+
+# saving
+file_out = paste(getwd(), '/_tmp/company_list_1.RData', sep = '')
+export(company_list_1, file_out)
+
+# let's check a sample of the data
+pander(company_list_1[sample(.N, 5)], split.table = 200)
+
+# deallocating memory
+rm(owner_company_list, owner_company_list_1)
+```
+
+
+let's check column values validity again
+```{r, warning=FALSE, include=TRUE}
+
+# prerequisite of detection of Adoszam values being unique is to order them by that column
+company_list_1 <- company_list_1[order(Adoszam)]
+
+ct <- check_that(company_list_1, 
+                 valid_notation_BankiUgyfel = BankiUgyfel == 0
+                                            | BankiUgyfel == 1,
+                 distinct_Adoszam = rle(sort(Adoszam))[[1]] == 1,
+                 complete_Adoszam = stri_length(Adoszam) == 8,
+                 initcap_Cegforma = Cegforma == stri_trans_totitle(Cegforma),
+                 valid_AktivTulajdonosSzam = AktivTulajdonosSzam >= 1,
+                 valid_AktivPrivatTulajdonos = AktivTulajdonosSzam >= AktivPrivatTulajdonos,
+                 filled_AktivTulajdonosSzam_and_AktivPrivatTulajdonos = stri_length(AktivTulajdonosSzam) >= 1
+                                                                      & stri_length(AktivPrivatTulajdonos) >= 1,
+                 not_negative_Cegkora = Cegkora >= 0,
+                 under_UCL_Cegkora = Cegkora <= mean(Cegkora, na.rm = TRUE) + 3 * sd(Cegkora, na.rm = TRUE),
+                 valid_Letszam = Letszam >= 1,
+                 filled_FotevekenysegText = stri_length(FotevekenysegText) >= 1,
+                 valid_postcode = nchar(sub(' .*', '', stri_trim(Szekhely))) == 4,
+                 valid_SzekhelyVaros = stri_length(SzekhelyVaros) >= 2
+                                     & grepl('\\d', SzekhelyVaros) == FALSE,
+                 initcap_SzekhelyVaros = SzekhelyVaros == stri_trans_totitle(SzekhelyVaros), 
+                 valid_Szekhely = stri_length(Szekhely) >= 11
+                                & grepl('\\D', substr(stri_trim(Szekhely), 1, 4)) == FALSE
+                                & grepl('\\^', Szekhely) == FALSE,
+                 initcap_Szekhely = Szekhely == stri_trans_totitle(Szekhely), 
+                 filled_Arbevetel = stri_length(Arbevetel) >= 1,
+                 filled_MerlegEredmeny = stri_length(MerlegEredmeny) >= 1,
+                 filled_SajatToke = stri_length(SajatToke) >= 1,
+                 filled_FotevekenysegText_and_AktivTulajdonosSzam_and_Cegforma = stri_length(FotevekenysegText) >= 1
+                                                                               & stri_length(AktivTulajdonosSzam) >= 1
+                                                                               & stri_length(Cegforma) >= 1,
+                 filled_Lat_Lon = !is.na(Lat)
+                                & !is.na(Lon),
+                 filled_unreg_emp = !is.na(unreg_emp),
+                 filled_AFAKod = !is.na(AFAKod),
+                 filled_Megye = !is.na(Megye),
+                 filled_TulajCegesBankiUgyfelNr = !is.na(TulajCegesBankiUgyfelNr)
+                 )
+dt <- data.table(summary(ct))
+dt <- dt[, c(1:5, 8)]
+
+# let's see the validity of the data
+pander(dt, split.table = 200)
+```
+
+
+# Imputating Data
+
+Some AktivPrivatTulajdonos, AktivTulajdonosSzam values are missing / I impute them with the median value in each Megye with same FotevekenysegText and AFAKod
+```{r, warning=FALSE, include=TRUE}
+
+# subsetting into dt
+dt <- copy(data.table(company_list_1[!is.na(AFAKod)
+                                   & !is.na(Megye)
+                                   & !is.na(FotevekenysegText), 
+                                   .(Adoszam,
+                                     AktivPrivatTulajdonos,
+                                     AktivTulajdonosSzam,
+                                     AFAKod,
+                                     Megye,
+                                     FotevekenysegText)]))
+
+# factorization of categorical variables
+dt[, ':=' (AFAKod = as.factor(AFAKod),
+           Megye = as.factor(Megye),
+           FotevekenysegText = as.factor(FotevekenysegText))]
+
+# checking the number of missing values of AktivPrivatTulajdonos
+n <- dt[is.na(AktivPrivatTulajdonos), .N]
+pandoc.header(paste('The prior number of missing AktivPrivatTulajdonos values: ', n, sep = ''))
+
+# imputation
+formula <- AktivPrivatTulajdonos ~ AFAKod + Megye + FotevekenysegText
+dt <- impute_median(dt, formula)
+Sys.sleep(3)
+
+# rounding the imputed values
+dt[!is.na(AktivPrivatTulajdonos), AktivPrivatTulajdonos := round(AktivPrivatTulajdonos, 0)]
+
+
+# checking the number of missing values of AktivTulajdonosSzam
+n <- dt[is.na(AktivTulajdonosSzam), .N]
+pandoc.header(paste('The prior number of missing AktivTulajdonosSzam values: ', n, sep = ''))
+
+# imputation
+formula <- AktivTulajdonosSzam ~ AFAKod + Megye + FotevekenysegText
+dt <- impute_median(dt, formula)
+Sys.sleep(3)
+
+# rounding the imputed values
+dt[!is.na(AktivTulajdonosSzam), AktivTulajdonosSzam := round(AktivTulajdonosSzam, 0)]
+
+# subsetting
+dt <- data.table(dt[, .(Adoszam, AktivPrivatTulajdonos, AktivTulajdonosSzam)])
+
+# initial preparation of company list 2
+company_list_2 <- copy(data.table(company_list_1))
+
+# right join the imputed values into company_list_2
+setkey(dt, Adoszam)
+setkey(company_list_2, Adoszam)
+company_list_2 <- data.table(dt[company_list_2])
+company_list_2[is.na(AktivPrivatTulajdonos), AktivPrivatTulajdonos := i.AktivPrivatTulajdonos]
+company_list_2[is.na(AktivTulajdonosSzam), AktivTulajdonosSzam := i.AktivTulajdonosSzam]
+company_list_2[, ':=' (i.AktivPrivatTulajdonos = NULL, i.AktivTulajdonosSzam = NULL)]
+
+# saving
+file_out = paste(getwd(), '/_tmp/company_list_2.RData', sep = '')
+export(company_list_2, file_out)
+
+# let's check the imputation again
+ct <- check_that(company_list_2,
+                 filled_AktivTulajdonosSzam = stri_length(AktivTulajdonosSzam) >= 1,
+                 filled_AktivPrivatTulajdonos = stri_length(AktivPrivatTulajdonos) >= 1,
+                 filled_AktivTulajdonosSzam_and_AktivPrivatTulajdonos = stri_length(AktivTulajdonosSzam) >= 1
+                                                                      & stri_length(AktivPrivatTulajdonos) >= 1,
+                 valid_AktivPrivatTulajdonos = AktivTulajdonosSzam >= AktivPrivatTulajdonos,
+                 filled_Cegforma = stri_length(Cegforma) >= 1,
+                 filled_AktivTulajdonosSzam_and_AktivPrivatTulajdonos_and_Cegforma = stri_length(AktivTulajdonosSzam) >= 1
+                                                                               & stri_length(AktivPrivatTulajdonos) >= 1
+                                                                               & stri_length(Cegforma) >= 1
+                 )
+dt <- data.table(summary(ct))
+dt <- dt[, c(1:5, 8)]
+
+# let's see the validity of the data
+pander(dt, split.table = 200)
+
+# deallocating memory!!
+rm(company_list_1)
+```
+
+Some Cegforma values are missing / I impute them with the median value in each Megye with same FotevekenysegText and AFAKod
+```{r, warning=FALSE, include=TRUE}
+
+# subsetting into dt
+dt <- copy(data.table(company_list_2[!is.na(Adoszam)
+                                   & !is.na(AktivPrivatTulajdonos)
+                                   & !is.na(AktivTulajdonosSzam)
+                                   & !is.na(Megye)
+                                   & !is.na(FotevekenysegText)
+                                   & !is.na(unreg_emp)
+                                   & !is.na(AFAKod), 
+                                   .(Adoszam,
+                                     Cegforma,
+                                     AktivPrivatTulajdonos,
+                                     AktivTulajdonosSzam,
+                                     Megye,
+                                     FotevekenysegText,
+                                     unreg_emp,
+                                     AFAKod)]))
+
+# factorization of categorical variables
+dt[, ':=' (Cegforma = as.factor(Cegforma),
+           Megye = as.factor(Megye),
+           FotevekenysegText = as.factor(FotevekenysegText),
+           unreg_emp = as.factor(unreg_emp),
+           AFAKod = as.factor(AFAKod)
+           )]
+
+# imputation of Cegforma
+formula <- Cegforma ~ AktivPrivatTulajdonos + AktivTulajdonosSzam + Megye + FotevekenysegText + unreg_emp + AFAKod
+dt <- data.table(impute_mf(dt, formula))
+
+# joinolni kellene
+dt <- dt[, .(Adoszam, Cegforma)]
+setkey(dt, Adoszam)
+setkey(company_list_2, Adoszam)
+company_list_2 <- data.table(dt[company_list_2])
+company_list_2[is.na(Cegforma), Cegforma := i.Cegforma]
+company_list_2[, i.Cegforma := NULL]
+
+# saving
+file_out = paste(getwd(), '/_tmp/company_list_2.RData', sep = '')
+export(company_list_2, file_out)
+ 
+# let's check the imputation again
+ct <- check_that(company_list_2,
+                 filled_AktivTulajdonosSzam = stri_length(AktivTulajdonosSzam) >= 1,
+                 filled_AktivPrivatTulajdonos = stri_length(AktivPrivatTulajdonos) >= 1,
+                 filled_AktivTulajdonosSzam_and_AktivPrivatTulajdonos = stri_length(AktivTulajdonosSzam) >= 1
+                                                                      & stri_length(AktivPrivatTulajdonos) >= 1,
+                 valid_AktivPrivatTulajdonos = AktivTulajdonosSzam >= AktivPrivatTulajdonos,
+                 filled_Cegforma = stri_length(Cegforma) >= 1,
+                 filled_AktivTulajdonosSzam_and_AktivPrivatTulajdonos_and_Cegforma = stri_length(AktivTulajdonosSzam) >= 1
+                                                                               & stri_length(AktivPrivatTulajdonos) >= 1
+                                                                               & stri_length(Cegforma) >= 1
+                 )
+temp <- data.table(summary(ct))
+temp <- temp[, c(1:5, 8)]
+
+# let's see the validity of the data
+pander(temp, split.table = 200)
+```
+
+Let's take a look at histograms of columns (variables) of company list 2
+```{r, include=TRUE, message=FALSE, warning=FALSE}
+
+p11 <- ggplot(company_list_2) + 
+        geom_histogram(aes(x = log10(SajatToke + 1)),
+                       fill = 'blue', 
+                       position = 'identity',
+                       binwidth = 0.3,
+                       alpha = I(0.7)) + 
+        ggtitle('Histogram for log10_SajatToke') +
+        facet_grid(BankiUgyfel ~ ., scales = 'free', labeller = labeller(BankiUgyfel = c('TRUE' = 'Banki Ugyfel', 
+                                                                                         'FALSE' = 'Not Banki Ugyfel'))) +
+        xlab('log10_SajatToke') +
+        theme_igray()
+Sys.sleep(2)  
+
+p12 <- ggplot(company_list_2) + 
+        geom_histogram(aes(x = log10(MerlegEredmeny + 1)),
+                       fill = 'green', 
+                       position = 'identity',
+                       binwidth = 0.3,
+                       alpha = I(0.7)) + 
+        ggtitle('Histogram for log10_MerlegEredmeny') +
+        facet_grid(BankiUgyfel ~ ., scales = 'free', labeller = labeller(BankiUgyfel = c('TRUE' = 'Banki Ugyfel', 
+                                                                                         'FALSE' = 'Not Banki Ugyfel'))) +
+        xlab('log10_MerlegEredmeny') +
+        theme_igray()
+Sys.sleep(2)  
+
+p13 <- ggplot(company_list_2) + 
+        geom_histogram(aes(x = log10(Arbevetel + 1)),
+                       fill = 'orange', 
+                       position = 'identity',
+                       binwidth = 0.3,
+                       alpha = I(0.7)) + 
+        ggtitle('Histogram for log10_Arbevetel') +
+        facet_grid(BankiUgyfel ~ ., scales = 'free', labeller = labeller(BankiUgyfel = c('TRUE' = 'Banki Ugyfel', 
+                                                                                         'FALSE' = 'Not Banki Ugyfel'))) +
+        xlab('log10_Arbevetel') +
+        theme_igray()
+Sys.sleep(2)
+
+p14 <- ggplot(company_list_2) + 
+        geom_histogram(aes(x = log10(AktivPrivatTulajdonos +1)),
+                       fill = 'red', 
+                       position = 'identity',
+                       binwidth = 0.1,
+                       alpha = I(0.7)) + 
+        ggtitle('Histogram for log10_AktivPrivatTulajdonos') +
+        facet_grid(BankiUgyfel ~ ., scales = 'free', labeller = labeller(BankiUgyfel = c('TRUE' = 'Banki Ugyfel', 
+                                                                                         'FALSE' = 'Not Banki Ugyfel'))) +
+        xlab('log10_AktivPrivatTulajdonos') +
+        theme_igray()
+Sys.sleep(2)
+
+p15 <- ggplot(company_list_2) + 
+        geom_histogram(aes(x = AktivTulajdonosSzam),
+                       fill = 'green', 
+                       position = 'identity',
+                       binwidth = 0.1,
+                       alpha = I(0.7)) + 
+        ggtitle('Histogram for log10_AktivTulajdonosSzam') +
+        facet_grid(BankiUgyfel ~ ., scales = 'free', labeller = labeller(BankiUgyfel = c('TRUE' = 'Banki Ugyfel', 
+                                                                                         'FALSE' = 'Not Banki Ugyfel'))) +
+        xlab('log10_AktivTulajdonosSzam') +
+        scale_x_log10() +
+        theme_igray()
+Sys.sleep(2)
+
+p16 <- ggplot(company_list_2) + 
+        geom_histogram(aes(x = TulajCegesBankiUgyfelNr),
+                       fill = 'brown',
+                       position = 'identity',
+                       #binwidth = 1,
+                       alpha = I(0.7)) +
+        ggtitle('Histogram for TulajCegesBankiUgyfelNr') +
+        facet_grid(BankiUgyfel ~ ., scales = 'free', labeller = labeller(BankiUgyfel = c('TRUE' = 'Banki Ugyfel', 
+                                                                                         'FALSE' = 'Not Banki Ugyfel'))) +
+        xlab('TulajCegesBankiUgyfelNr') +
+        theme_igray()
+Sys.sleep(2)
+
+p17 <- ggplot(company_list_2) + 
+        geom_histogram(aes(x = log10(Cegkora + 1)),
+                       fill = 'khaki',
+                       position = 'identity',
+                       binwidth = 0.2,
+                       alpha = I(0.7)) +
+        ggtitle('Histogram for log10_Cegkora') +
+        facet_grid(BankiUgyfel ~ ., scales = 'free', labeller = labeller(BankiUgyfel = c('TRUE' = 'Banki Ugyfel', 
+                                                                                         'FALSE' = 'Not Banki Ugyfel'))) +
+        xlab('log10_Cegkora') +
+        theme_igray()
+Sys.sleep(2)
+
+p18 <- ggplot(company_list_2) + 
+        geom_histogram(aes(x = log10(LegkozFiokTavProxy + 1)),
+                       fill = 'magenta',
+                       position = 'identity',
+                       binwidth = 0.2,
+                       alpha = I(0.7)) +
+        ggtitle('Histogram for log10_LegkozFiokTavProxy') +
+        facet_grid(BankiUgyfel ~ ., scales = 'free', labeller = labeller(BankiUgyfel = c('TRUE' = 'Banki Ugyfel', 
+                                                                                         'FALSE' = 'Not Banki Ugyfel'))) +
+        xlab('log10_LegkozFiokTavProxy') +
+        theme_igray()
+Sys.sleep(2)
+
+p19 <- ggplot(company_list_2) +
+        geom_bar(aes(x = as.factor(Cegforma)),
+                 fill = 'brown',
+                 position = 'identity',
+                 alpha = I(0.7)) +
+        facet_grid(BankiUgyfel ~ ., scales = 'free', labeller = labeller(BankiUgyfel = c('TRUE' = 'Banki Ugyfel', 
+                                                                                         'FALSE' = 'Not Banki Ugyfel'))) +
+        ggtitle('Breakdown of Cegforma') +
+        xlab('Cegforma') +
+        theme_igray()
+Sys.sleep(2)
+
+p20 <- ggplot(company_list_2) +
+        geom_bar(aes(x = as.factor(NAVTeruletKod)),
+                 fill = 'purple',
+                 position = 'identity',
+                 alpha = I(0.7)) +
+        facet_grid(BankiUgyfel ~ ., scales = 'free', labeller = labeller(BankiUgyfel = c('TRUE' = 'Banki Ugyfel', 
+                                                                                         'FALSE' = 'Not Banki Ugyfel'))) +
+        ggtitle('Breakdown of NAVTeruletKod') +
+        xlab('NAVTeruletKod') +
+        theme_igray()
+Sys.sleep(2)
+
+p21 <- ggplot(company_list_2) +
+        geom_bar(aes(x = as.factor(Megye)),
+                 fill = 'pink',
+                 position = 'identity',
+                 alpha = I(0.7)) +
+        facet_grid(BankiUgyfel ~ ., scales = 'free', labeller = labeller(BankiUgyfel = c('TRUE' = 'Banki Ugyfel', 
+                                                                                         'FALSE' = 'Not Banki Ugyfel'))) +
+        ggtitle('Breakdown of Megye') +
+        xlab('Megye') +
+        theme_igray()
+Sys.sleep(2)
+
+p22 <- ggplot(company_list_2) +
+        geom_bar(aes(x = as.factor(Varos)),
+                 fill = 'green',
+                 position = 'identity',
+                 alpha = I(0.7)) +
+        facet_grid(BankiUgyfel ~ ., scales = 'free', labeller = labeller(BankiUgyfel = c('TRUE' = 'Banki Ugyfel', 
+                                                                                         'FALSE' = 'Not Banki Ugyfel'))) +
+        ggtitle('Breakdown of Varos') +
+        xlab('Varos') +
+        theme_igray()
+Sys.sleep(2)
+
+p23 <- ggplot(company_list_2) +
+        geom_bar(aes(x = as.factor(unreg_emp)),
+                 fill = 'blue',
+                 position = 'identity',
+                 alpha = I(0.7)) +
+        facet_grid(BankiUgyfel ~ ., scales = 'free', labeller = labeller(BankiUgyfel = c('TRUE' = 'Banki Ugyfel', 
+                                                                                         'FALSE' = 'Not Banki Ugyfel'))) +
+        ggtitle('Breakdown of unreg_emp') +
+        xlab('unreg_emp') +
+        theme_igray()
+Sys.sleep(2)
+
+p24 <- ggplot(company_list_2) +
+        geom_bar(aes(x = as.factor(FotevekenysegText)),
+                 fill = 'magenta',
+                 position = 'identity',
+                 alpha = I(0.7)) +
+        facet_grid(BankiUgyfel ~ ., scales = 'free', labeller = labeller(BankiUgyfel = c('TRUE' = 'Banki Ugyfel', 
+                                                                                         'FALSE' = 'Not Banki Ugyfel'))) +
+        ggtitle('Breakdown of FotevekenysegText') +
+        xlab('FotevekenysegText') +
+        theme_igray()
+Sys.sleep(2)
+
+p25 <- ggplot(company_list_2) +
+        geom_bar(aes(x = as.factor(AFAKod)),
+                 fill = 'orange',
+                 position = 'identity',
+                 alpha = I(0.7)) +
+        facet_grid(BankiUgyfel ~ ., scales = 'free', labeller = labeller(BankiUgyfel = c('TRUE' = 'Banki Ugyfel', 
+                                                                                         'FALSE' = 'Not Banki Ugyfel'))) +
+        ggtitle('Breakdown of AFAKod') +
+        xlab('AFAKod') +
+        theme_igray()
+Sys.sleep(2)
+
+# without plotly in one grid:
+# multiplot(p11, p12, p13, p14, p15, p16, p17, p18, p19, p20, p21, p22, p23, p24, p25, cols = 2)
+
+library(plotly)
+library(htmlwidgets)
+Sys.sleep(2)
+
+# transforming into interactive graph
+pp11 <- ggplotly(p11)
+Sys.sleep(2)
+# saving
+file_out = paste(getwd(), '/pp11.html', sep = '')
+htmlwidgets::saveWidget(as.widget(pp11), file_out)
+
+# transforming into interactive graph
+pp12 <- ggplotly(p12)
+Sys.sleep(2)
+# saving
+file_out = paste(getwd(), '/pp12.html', sep = '')
+htmlwidgets::saveWidget(as.widget(pp12), file_out)
+
+# transforming into interactive graph
+pp13 <- ggplotly(p13)
+Sys.sleep(2)
+# saving
+file_out = paste(getwd(), '/pp13.html', sep = '')
+htmlwidgets::saveWidget(as.widget(pp13), file_out)
+
+# transforming into interactive graph
+pp14 <- ggplotly(p14)
+Sys.sleep(2)
+# saving
+file_out = paste(getwd(), '/pp14.html', sep = '')
+htmlwidgets::saveWidget(as.widget(pp14), file_out)
+
+# transforming into interactive graph
+pp15 <- ggplotly(p15)
+Sys.sleep(2)
+# saving
+file_out = paste(getwd(), '/pp15.html', sep = '')
+htmlwidgets::saveWidget(as.widget(pp15), file_out)
+
+# transforming into interactive graph
+pp16 <- ggplotly(p16)
+Sys.sleep(2)
+# saving
+file_out = paste(getwd(), '/pp16.html', sep = '')
+htmlwidgets::saveWidget(as.widget(pp16), file_out)
+
+# transforming into interactive graph
+pp17 <- ggplotly(p17)
+Sys.sleep(2)
+# saving
+file_out = paste(getwd(), '/pp17.html', sep = '')
+htmlwidgets::saveWidget(as.widget(pp17), file_out)
+
+# transforming into interactive graph
+pp18 <- ggplotly(p18)
+Sys.sleep(2)
+# saving
+file_out = paste(getwd(), '/pp18.html', sep = '')
+htmlwidgets::saveWidget(as.widget(pp18), file_out)
+
+# transforming into interactive graph
+pp19 <- ggplotly(p19)
+Sys.sleep(2)
+# saving
+file_out = paste(getwd(), '/pp19.html', sep = '')
+htmlwidgets::saveWidget(as.widget(pp19), file_out)
+
+# transforming into interactive graph
+pp20 <- ggplotly(p20)
+Sys.sleep(2)
+# saving
+file_out = paste(getwd(), '/pp20.html', sep = '')
+htmlwidgets::saveWidget(as.widget(pp20), file_out)
+
+# transforming into interactive graph
+pp21 <- ggplotly(p21)
+Sys.sleep(2)
+# saving
+file_out = paste(getwd(), '/pp21.html', sep = '')
+htmlwidgets::saveWidget(as.widget(pp21), file_out)
+
+# transforming into interactive graph
+pp22 <- ggplotly(p22)
+Sys.sleep(2)
+# saving
+file_out = paste(getwd(), '/pp22.html', sep = '')
+htmlwidgets::saveWidget(as.widget(pp22), file_out)
+
+# transforming into interactive graph
+pp23 <- ggplotly(p23)
+Sys.sleep(2)
+# saving
+file_out = paste(getwd(), '/pp23.html', sep = '')
+htmlwidgets::saveWidget(as.widget(pp23), file_out)
+
+# transforming into interactive graph
+pp24 <- ggplotly(p24)
+Sys.sleep(2)
+# saving
+file_out = paste(getwd(), '/pp24.html', sep = '')
+htmlwidgets::saveWidget(as.widget(pp24), file_out)
+
+# transforming into interactive graph
+pp25 <- ggplotly(p25)
+Sys.sleep(2)
+# saving
+file_out = paste(getwd(), '/pp25.html', sep = '')
+htmlwidgets::saveWidget(as.widget(pp25), file_out)
+
+# moving those file into tmp folder
+filez <- list.files(getwd(), pattern = '^pp\\d+\\.html$')
+sapply(filez, FUN = function(eachPath) {
+  file.rename(from = eachPath,
+              to = sub(pattern = 'pp',
+                       replacement = './_results/pp',
+                       eachPath))
+  })
+
+
+layout(pp11, dragmode = 'pan')
+Sys.sleep(2)
+layout(pp12, dragmode = 'pan')
+Sys.sleep(2)
+layout(pp13, dragmode = 'pan')
+Sys.sleep(2)
+layout(pp14, dragmode = 'pan')
+Sys.sleep(2)
+layout(pp15, dragmode = 'pan')
+Sys.sleep(2)
+layout(pp16, dragmode = 'pan')
+Sys.sleep(2)
+layout(pp17, dragmode = 'pan')
+Sys.sleep(2)
+layout(pp18, dragmode = 'pan')
+Sys.sleep(2)
+layout(pp19, dragmode = 'pan')
+Sys.sleep(2)
+layout(pp20, dragmode = 'pan')
+Sys.sleep(2)
+layout(pp21, dragmode = 'pan')
+Sys.sleep(2)
+layout(pp22, dragmode = 'pan')
+Sys.sleep(2)
+layout(pp23, dragmode = 'pan')
+Sys.sleep(2)
+layout(pp24, dragmode = 'pan')
+Sys.sleep(2)
+layout(pp25, dragmode = 'pan')
+Sys.sleep(2)
+
+# dropping plotly package and relaunch rio package
+detach(package:plotly, unload = TRUE)
+detach(package:htmlwidgets, unload = TRUE)
+library(rio)
+
+# deallocating memory!!
+rm(p11, p12, p13, p14, p15, p16, p17, p18, p19, p20, p21, p22, p23, p24, p25)
+```
+According to compared distributions, these may be predictor variables:
+SajatToke
+MerlegEredmeny
+AktivTulajdonosSzam
+TulajCegesBankiUgyfelNr
+Cegkora
+LegkozFiokTavProxy
+Cegforma
+NAVTeruletKod
+Megye
+Varos
+FotevekenysegText
+AFAKod
+
+I put them and the target variable (BankiUgyfel) into a new data table and blended NAs.
+I omitted the Varos variable, because I think that is too restrictive.
+```{r, warning=FALSE,include=TRUE}
+
+company_list_3 <- copy(data.table(company_list_2[!is.na(BankiUgyfel) &
+                                                 !is.na(SajatToke) &
+                                                 !is.na(MerlegEredmeny) &
+                                                 !is.na(AktivTulajdonosSzam) &
+                                                 !is.na(TulajCegesBankiUgyfelNr) &
+                                                 !is.na(Cegkora) &
+                                                 !is.na(LegkozFiokTavProxy) &
+                                                 !is.na(Cegforma) &
+                                                 !is.na(NAVTeruletKod) &
+                                                 !is.na(Megye) &
+                                                 !is.na(FotevekenysegText) &
+                                                 !is.na(AFAKod), .(BankiUgyfel,
+                                                                   SajatToke,
+                                                                   MerlegEredmeny,
+                                                                   AktivTulajdonosSzam,
+                                                                   TulajCegesBankiUgyfelNr,
+                                                                   Cegkora,
+                                                                   LegkozFiokTavProxy,
+                                                                   Cegforma,
+                                                                   NAVTeruletKod,
+                                                                   Megye,
+                                                                   FotevekenysegText,
+                                                                   AFAKod)]))
+
+# making factors from text variables
+company_list_3[, ':=' (NAVTeruletKod = as.factor(NAVTeruletKod), Megye = as.factor(Megye), FotevekenysegText = as.factor(FotevekenysegText), AFAKod =as.factor(AFAKod))]
+pander(str(company_list_3))
+
+
+# saving
+file_out = paste(getwd(), '/_tmp/company_list_3.RData', sep = '')
+export(company_list_3, file_out)
+
+# let's check a sample of the data
+pander(company_list_3[sample(.N, 5)], split.table = 200)
+
+# deallocating memory!!
+rm(company_list_2)
+```
+
+
+# Model building
+
+splitting into train, test & validation subset
+```{r, warning=FALSE,include=TRUE}
+
+company_list_3 <- data.table(import(paste(getwd(), '/_tmp/company_list_3.RData', sep = '')))
+
+set.seed(20140407)
+n <- nrow(company_list_3)
+idx_train <- sample(1:n, 0.5*n)
+idx_test <- sample(setdiff(1:n, idx_train), 0.25*n)
+idx_valid <- sample(setdiff(setdiff(1:n, idx_train), idx_test), 0.25*n)
+
+d_train <- company_list_3[idx_train,]
+d_test <- company_list_3[idx_test,]
+d_valid <- company_list_3[idx_valid,]
+
+pandoc.header(paste('size of train subset: ', dim(d_train)[1], sep = ''))
+pandoc.header(paste('size of test subset: ', dim(d_test)[1], sep = ''))
+pandoc.header(paste('size of test subset: ', dim(d_valid)[1], sep = ''))
+
+# deallocating memory!!
+rm(company_list_3)
+```
+
+I chose random forest decision tree for predicting targetable companies and I used h2o since it is fast & powerful .
+RF is a swiss-army-knife method for classification. It means boostrapping data, building trees, aggregating with random subset of variable at each split.
+```{r, warning=FALSE,include=TRUE}
+
+# computing optimal memory level for h2o
+mem <- paste(as.character(round(as.numeric(system("awk '/Mem/ {print $2}' /proc/meminfo", intern=TRUE))[1]*0.8/1024/1024, 0)), 'g', sep = '')
+
+# initialize h2o Java server (R connects via REST)
+h2o.init(max_mem_size = mem, ## setting RAM size
+         nthreads = -1)   ## setting thread numbers to maximum available 
+
+# uploading data to H2O
+dh2o_train <- as.h2o(d_train)
+dh2o_test <- as.h2o(d_test)
+dh2o_valid <- as.h2o(d_valid)
+
+# machine learning
+# I played around with several settings and these seemed good enough
+model <- h2o.randomForest(x = 2:ncol(dh2o_train), # predictor variables
+                          y = 1, # target variable
+                          training_frame = dh2o_train, # speaks for itself
+                          model_id = 'BankiUgyfelModel', # being name of the model
+                          nfolds = 5, # nr of folds for N-fold cross-validation
+                          mtries = -1, # nr of variables randomly sampled as candidates at each split. sqrt(# of predictors)
+                          ntrees = 30, # nr of trees
+                          max_depth = 5 # maximum tree depth
+                          )
+
+# deallocating memory
+rm(d_train, d_test, d_valid)
+```
+
+Let's see how it performs.
+Our goal is to maximize model accuracy but avoiding overfitting at the same time.
+```{r, warning=FALSE,include=TRUE,message=FALSE}
+
+# Area Under the Curve 
+# preparation for plotting ROC for training dataset
+dt <- copy(data.table(h2o.performance(model, dh2o_train)@metrics$thresholds_and_metric_scores[18:19]))
+
+export(dt2, '~/Desktop/h2o_model_performance.csv')
+
+p26 <- ggplot(dt, aes(x = fpr, y = tpr)) +
+          geom_point(color = 'blue',
+                     pch = 1,
+                     alpha = 0.7) +
+          coord_fixed(ratio = 1) +
+          xlab('False Positive Rate') +
+          ylab('True Positive Rate') +
+          ggtitle('Receiver Operating Characteristic of model on traning dataset') +
+          theme_igray() 
+
+# transforming into interactive graph
+library(plotly)
+library(htmlwidgets)
+pp26 <- ggplotly(p26)
+Sys.sleep(2)
+
+# saving
+file_out = paste(getwd(), '/pp26.html', sep = '')
+htmlwidgets::saveWidget(as.widget(pp26), file_out)
+
+# moving those file into tmp folder
+filez <- list.files(getwd(), pattern = '^pp26*')
+sapply(filez, FUN = function(eachPath) {
+  file.rename(from = eachPath,
+              to = sub(pattern = 'pp',
+                       replacement = './_results/pp',
+                       eachPath))
+  })
+
+# plotting ROC for training dataset
+layout(pp26, dragmode = 'pan')
+Sys.sleep(2)
+
+# dropping plotly package and relaunch rio package
+detach(package:plotly, unload = TRUE)
+detach(package:htmlwidgets, unload = TRUE)
+library(rio)
+
+# Area Under the Curve results
+# You can also see/check/examine the data on the h2o user interface: http://localhost:54321 
+# https://en.wikipedia.org/wiki/Receiver_operating_characteristic#Area_under_the_curve
+auc_train <- round(h2o.auc(h2o.performance(model, dh2o_train)), 5)
+auc_test <- round(h2o.auc(h2o.performance(model, dh2o_test)), 5)
+auc_valid <- round(h2o.auc(h2o.performance(model, dh2o_valid)), 5)
+pandoc.header('Area Under the Curve results')
+pandoc.header('0.90-1.00 = excellent')
+pandoc.header('0.80-0.90 = good')
+pandoc.header('0.70-0.80 = fair')
+pandoc.header('0.60-0.70 = poor')
+pandoc.header('0.50-0.60 = fail')
+pandoc.header('')
+pandoc.header('Our AUC is excellent for all the train, test and validation dataset. In addition they are very close to each other which means no overfitting!!')
+pandoc.header(paste('training dataset AUC: ', auc_train, sep = ''))
+pandoc.header(paste('testing dataset AUC: ', auc_test, sep = ''))
+pandoc.header(paste('validation dataset AUC: ', auc_valid, sep = ''))
+
+# Let see the confusion matrices
+# You can also see/check/examine the data on the h2o user interface: http://localhost:54321 
+# https://en.wikipedia.org/wiki/Confusion_matrix
+pandoc.header(' ')
+pander('The number of missclassified records are below 3% in each dataset')
+pandoc.header(' ')
+pandoc.header('confusion matrix of training dataset')
+pandoc.table(h2o.confusionMatrix(model, dh2o_train))
+pandoc.header('confusion matrix of testing dataset')
+pandoc.table(h2o.confusionMatrix(model, dh2o_test))
+pandoc.header('confusion matrix of validation dataset')
+pandoc.table(h2o.confusionMatrix(model, dh2o_valid))
+
+# all metrics of the model
+# You can also see/check/examine the data on the h2o user interface: http://localhost:54321 
+pandoc.header(' ')
+pandoc.header('all metrics of the model for training dataset')
+print(h2o.performance(model, dh2o_train))
+pandoc.header(' ')
+pandoc.header('all metrics of the model for test dataset')
+print(h2o.performance(model, dh2o_test))
+pandoc.header(' ')
+pandoc.header('all metrics of the model for validation dataset')
+print(h2o.performance(model, dh2o_valid))
+
+# deallocating memory
+rm(p26)
+```
+
+Saving model and closing h2o
+```{r, include=TRUE,warning=FALSE,message=FALSE}
+
+# saving model in binary
+file_out = paste(getwd(), '/_results/', sep = '')
+h2o.saveModel(model, path = file_out) 
+
+# saving model scoring in POJO
+file_out = paste(getwd(), '/_results', sep = '')
+h2o.download_pojo(model, path = file_out, get_jar = TRUE)
+
+# disconnecting from h2o
+h2o.shutdown(prompt = FALSE)
+```
