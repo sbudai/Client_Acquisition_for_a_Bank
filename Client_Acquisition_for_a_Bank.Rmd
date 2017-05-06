@@ -71,7 +71,8 @@ install_load('formatR',
              'grid',
              'plotly',
              'htmlwidgets',
-             'openxlsx')
+             'openxlsx',
+             'RSelenium')
 Sys.sleep(3)
 
 keys <- data.table(fread('~/Documents/creds.csv'))
@@ -791,10 +792,29 @@ deallocating memory!
 rm(temp)
 ```
 
-downloading those companies list which employed people without registration
+downloading those companies list which employed people without registration from http://nav.gov.hu/nav/adatbazisok/benemjelentett
+this link name (and the content also) is changing weekly, so I used Selenium
 ```{r, warning=FALSE, include=TRUE}
-# this link is changing weekly / you can check the valid one on http://nav.gov.hu/nav/adatbazisok/benemjelentett
-unreg_emp <- data.table(read.xlsx('http://nav.gov.hu/data/cms328145/Be_nem_jelentett_alkalmazottat_foglalkoztatok_20170418.xlsx'))
+Page <- 'http://nav.gov.hu/nav/adatbazisok/benemjelentett'
+XpathValue <- '//*[@id="portal"]/div[6]/div[2]/div[2]/div[2]/div/div/div/table/tbody/tr[2]/td[2]/a'
+rD <- rsDriver(port = 4567L, 
+               browser = 'chrome', 
+               version = 'latest', 
+               chromever = 'latest',
+               geckover = 'latest', 
+               phantomver = '2.1.1',
+               verbose = TRUE, 
+               check = TRUE)
+remDr <- rD[['client']]
+remDr$navigate(Page)
+WebElem <- remDr$findElement(using = 'xpath', value = XpathValue)
+URL <- as.character(WebElem$getElementAttribute('href'))
+remDr$close()
+rD[['server']]$stop()
+rm(rD)
+rm(remDr)
+rm(WebElem)
+unreg_emp <- data.table(read.xlsx(URL))
 ```
 
 changing accented characters into non-accented ones in the downloaded data
