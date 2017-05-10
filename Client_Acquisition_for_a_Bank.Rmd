@@ -21,6 +21,9 @@ cleaning the workplace
 rm(list = ls())
 gc(reset = TRUE)
 unlink(paste(getwd(), '/Client_Acquisition_for_a_Bank.nb.html', sep = ''), recursive = TRUE)
+unlink(paste(getwd(), '/_results/BankiUgyfelModel', sep = ''), recursive = TRUE)
+unlink(paste(getwd(), '/_results/BankiUgyfelModel.java', sep = ''), recursive = TRUE)
+unlink(paste(getwd(), '/_results/h2o-genmodel.jar', sep = ''), recursive = TRUE)
 ```
 
 setting general options
@@ -148,7 +151,9 @@ company_list[, ':=' (FotevekenysegText = stri_trans_general(FotevekenysegText , 
 saving
 ```{r, warning=FALSE, include=TRUE}
 file_out = paste(getwd(), '/_tmp/company_list.RData', sep = '')
-fwrite(company_list, file_out)
+fwrite(company_list, 
+       file = file_out,
+       nThread = getDTthreads())
 ```
 
 let's check a sample of the data
@@ -174,7 +179,9 @@ colnames(owner_company_list) <- gsub(' ', '', stri_trans_totitle(gsub('_', ' ', 
 saving
 ```{r, warning=FALSE, include=TRUE}
 file_out = paste(getwd(), '/_tmp/owner_company_list.RData', sep = '')
-fwrite(owner_company_list, file_out)
+fwrite(owner_company_list, 
+       file = file_out,
+       nThread = getDTthreads())
 ```
 
 let's check a sample of the data
@@ -196,7 +203,9 @@ setnames(branch_zip_list, 'irányítószám', 'IrSzam')
 saving
 ```{r, warning=FALSE, include=TRUE}
 file_out = paste(getwd(), '/_tmp/branch_zip_list.RData', sep = '')
-fwrite(branch_zip_list, file_out)
+fwrite(branch_zip_list, 
+       file = file_out,
+       nThread = getDTthreads())
 ```
 
 let's check a sample of the data
@@ -411,7 +420,9 @@ company_list[stri_length(stri_enc_toutf8(SzekhelyVaros, validate = TRUE)) < 2
 saving modified company_list in RData format
 ```{r, warning=FALSE, include=TRUE}
 file_out = paste(getwd(), '/_tmp/company_list.RData', sep = '')
-fwrite(company_list, file_out)
+fwrite(company_list, 
+       file = file_out,
+       nThread = getDTthreads())
 ```
 
 let's check a sample of the data
@@ -680,16 +691,8 @@ file_out = paste(getwd(), '/pp10.html', sep = '')
 htmlwidgets::saveWidget(as.widget(pp10), file_out)
 ```
 
-moving those file into tmp folder
+plotting
 ```{r, include=TRUE, message=FALSE, warning=FALSE}
-filez <- list.files(getwd(), pattern = '^pp\\d+\\.html$')
-sapply(filez, FUN = function(eachPath) {
-  file.rename(from = eachPath,
-              to = sub(pattern = 'pp',
-                       replacement = './_tmp/pp',
-                       eachPath))
-  })
-
 layout(pp1, dragmode = 'pan')
 Sys.sleep(2)
 layout(pp2, dragmode = 'pan')
@@ -826,7 +829,9 @@ unreg_emp[, ':=' (AdozoNeve = stri_trans_general(AdozoNeve, 'Latin-ASCII'), Szek
 saving
 ```{r, warning=FALSE, include=TRUE}
 file_out = paste(getwd(), '/_tmp/unreg_emp.RData', sep = '')
-fwrite(unreg_emp, file_out)
+fwrite(unreg_emp, 
+       file = file_out,
+       nThread = getDTthreads())
 ```
 
 let's check a sample of the data
@@ -846,7 +851,9 @@ unreg_emp <- unique(unreg_emp)
 saving
 ```{r, warning=FALSE, include=TRUE}
 file_out = paste(getwd(), '/_tmp/unreg_emp.RData', sep = '')
-fwrite(unreg_emp, file_out)
+fwrite(unreg_emp, 
+       file = file_out,
+       nThread = getDTthreads())
 ```
 
 let's check a sample of the data
@@ -933,7 +940,9 @@ branch_postcode_list <- postcode_list[branch_zip_list]
 saving
 ```{r, warning=FALSE, include=TRUE}
 file_out = paste(getwd(), '/_tmp/branch_postcode_list.RData', sep = '')
-fwrite(branch_postcode_list, file_out)
+fwrite(branch_postcode_list, 
+       file = file_out,
+       nThread = getDTthreads())
 ```
 
 Let's check with eyeballing in which postcode area are the branches on the bank
@@ -984,7 +993,9 @@ for (i in 1:nrow(postcode_geocode_list)) {
 saving
 ```{r, warning=FALSE, include=TRUE}
 file_out = paste(getwd(), '/_tmp/dist_matrix.RData', sep = '')
-fwrite(dist_matrix, file_out)
+fwrite(dist_matrix, 
+       file = file_out,
+       nThread = getDTthreads())
 ```
 
 let's check a sample of the distance matrix data
@@ -1003,7 +1014,9 @@ company_list_1 <- dt[company_list_1]
 saving
 ```{r, warning=FALSE, include=TRUE}
 file_out = paste(getwd(), '/_tmp/company_list_1.RData', sep = '')
-fwrite(company_list_1, file_out)
+fwrite(company_list_1, 
+       file = file_out,
+       nThread = getDTthreads())
 ```
 
 let's check a sample of the data
@@ -1035,7 +1048,9 @@ owner_company_list_1[is.na(TulajCegesBankiUgyfel), TulajCegesBankiUgyfel := FALS
 saving
 ```{r, warning=FALSE, include=TRUE}
 file_out = paste(getwd(), '/_tmp/owner_company_list_1.RData', sep = '')
-fwrite(owner_company_list_1, file_out)
+fwrite(owner_company_list_1, 
+       file = file_out,
+       nThread = getDTthreads())
 ```
 
 let's check the data
@@ -1068,7 +1083,9 @@ company_list_1[is.na(TulajCegesBankiUgyfelNr), TulajCegesBankiUgyfelNr := 0]
 saving
 ```{r, warning=FALSE, include=TRUE}
 file_out = paste(getwd(), '/_tmp/company_list_1.RData', sep = '')
-fwrite(company_list_1, file_out)
+fwrite(company_list_1, 
+       file = file_out,
+       nThread = getDTthreads())
 ```
 
 let's check a sample of the data
@@ -1216,7 +1233,9 @@ company_list_2[, ':=' (i.AktivPrivatTulajdonos = NULL, i.AktivTulajdonosSzam = N
 saving
 ```{r, warning=FALSE, include=TRUE}
 file_out = paste(getwd(), '/_tmp/company_list_2.RData', sep = '')
-fwrite(company_list_2, file_out)
+fwrite(company_list_2, 
+       file = file_out,
+       nThread = getDTthreads())
 ```
 
 let's check the imputation again
@@ -1296,7 +1315,9 @@ company_list_2[, i.Cegforma := NULL]
 saving
 ```{r, warning=FALSE, include=TRUE}
 file_out = paste(getwd(), '/_tmp/company_list_2.RData', sep = '')
-fwrite(company_list_2, file_out)
+fwrite(company_list_2, 
+       file = file_out,
+       nThread = getDTthreads())
 ```
  
 let's check the imputation again
@@ -1698,16 +1719,8 @@ file_out = paste(getwd(), '/pp25.html', sep = '')
 htmlwidgets::saveWidget(as.widget(pp25), file_out)
 ```
 
-moving those file into tmp folder
+plotting
 ```{r, include=TRUE, message=FALSE, warning=FALSE}
-filez <- list.files(getwd(), pattern = '^pp\\d+\\.html$')
-sapply(filez, FUN = function(eachPath) {
-  file.rename(from = eachPath,
-              to = sub(pattern = 'pp',
-                       replacement = './_results/pp',
-                       eachPath))
-  })
-
 layout(pp11, dragmode = 'pan')
 Sys.sleep(2)
 layout(pp12, dragmode = 'pan')
@@ -1740,10 +1753,23 @@ layout(pp25, dragmode = 'pan')
 Sys.sleep(2)
 ```
 
-deallocating memory!!
+moving those plotly files into tmp folder
 ```{r, include=TRUE, message=FALSE, warning=FALSE}
-rm(p11, p12, p13, p14, p15, p16, p17, p18, p19, p20, p21, p22, p23, p24, p25)
+filez <- list.files(getwd(), pattern = '^pp\\d+\\.html$')
+sapply(filez, FUN = function(eachPath) {
+  file.rename(from = eachPath,
+              to = sub(pattern = 'pp',
+                       replacement = './_tmp/pp',
+                       eachPath))
+  })
 ```
+
+ deallocating memory!!
+```{r, include=TRUE, message=FALSE, warning=FALSE}
+rm(p1, p2, p3, p4, p5, p6, p7, p8, p9, p10, p11, p12, p13, p14, p15, p16, p17, p18, p19, p20, p21, p22, p23, p24, p25)
+rm(pp1, pp2, pp3, pp4, pp5, pp6, pp7, pp8, pp9, pp10, pp11, pp12, pp13, pp14, pp15, pp16, pp17, pp18, pp19, pp20, pp21, pp22, pp23, pp24, pp25)
+```
+
 According to compared distributions, these may be predictor variables:
 SajatToke
 MerlegEredmeny
@@ -1796,7 +1822,9 @@ pander(str(company_list_3))
 saving
 ```{r, warning=FALSE,include=TRUE}
 file_out = paste(getwd(), '/_tmp/company_list_3.RData', sep = '')
-fwrite(company_list_3, file_out)
+fwrite(company_list_3, 
+       file = file_out,
+       nThread = getDTthreads())
 ```
 
 let's check a sample of the data
@@ -1874,7 +1902,7 @@ model <- h2o.randomForest(x = 2:ncol(dh2o_train), # predictor variables
 
 deallocating memory
 ```{r, warning=FALSE,include=TRUE}
-rm(d_train, d_test, d_valid)
+rm(d_train, d_test)
 ```
 
 Let's see how it performs.
@@ -1883,9 +1911,7 @@ Our goal is to maximize model accuracy but avoiding overfitting at the same time
 Area Under the Curve 
 preparation for plotting ROC for training dataset
 ```{r, warning=FALSE,include=TRUE,message=FALSE}
-dt2 <- copy(data.table(h2o.performance(model, dh2o_train)@metrics$thresholds_and_metric_scores[18:19]))
-
-fwrite(dt2, '~/Desktop/h2o_model_performance.csv')
+dt2 <- data.table(h2o.performance(model, dh2o_train)@metrics$thresholds_and_metric_scores[18:19])
 
 p26 <- ggplot(dt2, aes(x = fpr, y = tpr)) +
           geom_point(color = 'blue',
@@ -1898,32 +1924,17 @@ p26 <- ggplot(dt2, aes(x = fpr, y = tpr)) +
           theme_igray()
 ```
 
-transforming into interactive graph
+
+saving ROC for training dataset
 ```{r, warning=FALSE,include=TRUE,message=FALSE}
-pp26 <- ggplotly(p26)
-Sys.sleep(2)
+file_out = paste(getwd(), '/_tmp/', sep = '')
+ggsave(path = file_out, filename = 'p26.png')
 ```
 
-saving
-```{r, warning=FALSE,include=TRUE,message=FALSE}
-file_out = paste(getwd(), '/pp26.html', sep = '')
-htmlwidgets::saveWidget(as.widget(pp26), file_out)
-```
-
-moving those file into tmp folder
-```{r, warning=FALSE,include=TRUE,message=FALSE}
-filez <- list.files(getwd(), pattern = '^pp26*')
-sapply(filez, FUN = function(eachPath) {
-  file.rename(from = eachPath,
-              to = sub(pattern = 'pp',
-                       replacement = './_results/pp',
-                       eachPath))
-  })
-```
 
 plotting ROC for training dataset
 ```{r, warning=FALSE,include=TRUE,message=FALSE}
-layout(pp26, dragmode = 'pan')
+plot(p26)
 Sys.sleep(2)
 ```
 
@@ -1993,7 +2004,32 @@ file_out = paste(getwd(), '/_results', sep = '')
 h2o.download_pojo(model, path = file_out, get_jar = TRUE)
 ```
 
+get fitted values of the validation dataset (public_test_scored.csv)
+```{r, include=TRUE,warning=FALSE,message=FALSE}
+BankiUgyfelModel.fit <- as.data.table(h2o.predict(object = model,
+                                                  newdata = dh2o_valid))[, 2:3]
+colnames(BankiUgyfelModel.fit) <- c('p0', 'p1')
+thrhd <- h2o.find_threshold_by_max_metric( h2o.performance(model, dh2o_valid), 'f1')
+BankiUgyfelModel.fit[, predict := FALSE]
+BankiUgyfelModel.fit[p1 >= thrhd, predict := TRUE]
+scored_result <- cbind(d_valid, BankiUgyfelModel.fit)
+pander(scored_result[sample(.N, 5)], split.table = 200)
+```
+
+saving predicted result set (based on validation data)
+```{r, include=TRUE,warning=FALSE,message=FALSE}
+file_out = paste(getwd(), '/_results/scored_result.RData', sep = '')
+fwrite(scored_result,
+       file = file_out,
+       nThread = getDTthreads())
+```
+
 disconnecting from h2o
 ```{r, include=TRUE,warning=FALSE,message=FALSE}
 h2o.shutdown(prompt = FALSE)
+```
+
+deallocating memory!
+```{r, include=TRUE, message=FALSE, warning=FALSE}
+rm(list = ls())
 ```
